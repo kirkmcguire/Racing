@@ -322,8 +322,9 @@ def clean_telemetry(df: pd.DataFrame) -> pd.DataFrame:
     pit = work["pit_status"] if "pit_status" in work.columns else pd.Series(0, index=idx)
     derived["valid_sample"] = (derived["speed_kph"].fillna(0) > 5) & (lap_n.fillna(-1) >= 0) & (pit.fillna(0) <= 0)
 
-    out = pd.concat([df, pd.DataFrame(derived, index=idx)], axis=1)
-    return out
+    for k, v in derived.items():
+    df[k] = v
+return df.loc[:, ~df.columns.duplicated(keep="last")]
 
 
 def extract_setup(df: pd.DataFrame) -> dict[str, Any]:
