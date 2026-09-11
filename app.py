@@ -2405,6 +2405,58 @@ def session_overview(df: pd.DataFrame) -> dict[str, Any]:
 # Streamlit UI
 # ---------------------------------------------------------------------------
 
+def calculate_ideal_setup(detected_issues: list, current_setup: dict, setup_limits: dict) -> dict:
+    """
+    Dynamically generates setup adjustments based on active issues 
+    and validates them against your hard-coded SETUP_LIMITS.
+    """
+    suggested_rows = []
+    applied_changes = []
+    skipped_changes = []
+    all_changes = []
+
+    for issue in detected_issues:
+        issue_name = issue.get("name")
+        
+        # Example logic: Mapping the issue to a dynamic setup resolution
+        if issue_name == "High-Speed Understeer":
+            param = "Front Wing"
+            current_val = current_setup.get(param, 5)
+            max_limit = setup_limits.get(param, {}).get("max", 11)
+            
+            if current_val < max_limit:
+                new_val = current_val + 1
+                applied_changes.append({
+                    "parameter": param, "direction": "Increase", 
+                    "to": str(new_val), "from": str(current_val), 
+                    "reason": "Mitigates high-speed understeer.", "issue": issue_name
+                })
+                suggested_rows.append({"Parameter": param, "Action": "Increase (+1 click)", "Reason": "Adds front bite."})
+                
+                all_changes.append(SetupChange(
+                    option_label="Increase Front Wing", parameter=param, direction="Increase",
+                    amount_hint="+1 click", feasible=True, blocked_reason="",
+                    reason="Shifts aero balance forward.", validation_metric="Apex minimum speed",
+                    issue_trigger=issue_name
+                ))
+            else:
+                skipped_changes.append(f"{param}: Skipped (Already at maximum limit of {max_limit}).")
+                all_changes.append(SetupChange(
+                    option_label="Increase Front Wing", parameter=param, direction="Increase",
+                    amount_hint="+1 click", feasible=False, blocked_reason="At max aero limit",
+                    reason="Shifts aero balance forward.", validation_metric="Apex minimum speed",
+                    issue_trigger=issue_name
+                ))
+
+        # Add additional elif blocks here for Brake Bias, ARB, etc. based on your mapping
+
+    return {
+        "mode": "dynamic setup",
+        "rows": suggested_rows,
+        "applied": applied_changes,
+        "skipped": skipped_changes,
+        "all_changes": all_changes
+    }
 
 def main():
     st.set_page_config(
