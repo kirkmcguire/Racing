@@ -324,7 +324,7 @@ def clean_telemetry(df: pd.DataFrame) -> pd.DataFrame:
 
     for k, v in derived.items():
         df[k] = v
-return df.loc[:, ~df.columns.duplicated(keep="last")]
+    return df.loc[:, ~df.columns.duplicated(keep="last")]
 
 
 def extract_setup(df: pd.DataFrame) -> dict[str, Any]:
