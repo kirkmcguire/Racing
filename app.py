@@ -323,7 +323,7 @@ def clean_telemetry(df: pd.DataFrame) -> pd.DataFrame:
     derived["valid_sample"] = (derived["speed_kph"].fillna(0) > 5) & (lap_n.fillna(-1) >= 0) & (pit.fillna(0) <= 0)
 
     for k, v in derived.items():
-    df[k] = v
+        df[k] = v
 return df.loc[:, ~df.columns.duplicated(keep="last")]
 
 
