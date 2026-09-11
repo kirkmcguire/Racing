@@ -2964,6 +2964,113 @@ counts as one event, not hundreds of rows. Presence % = share of laps where the 
 
     with st.expander("All issue IDs (debug)"):
         st.write([asdict(s) for s in summaries])
+    st.subheader(f"Suggested setup ({suggested['mode'].capitalize()} mode)")
+    st.caption(
+        "Combines non-conflicting changes from top S/A/B issues, starting from your current setup "
+        "and clamped to confirmed limits."
+    )
+    if suggested["rows"]:
+        st.dataframe(pd.DataFrame(suggested["rows"]), width="stretch", hide_index=True)
+        if suggested["applied"]:
+            st.markdown("**Applied changes:**")
+            for app in suggested["applied"]:
+                st.markdown(
+                    f"- **{app['parameter']}**: {format_setup_value(app['parameter'], app['from'])} "
+                    f"→ {format_setup_value(app['parameter'], app['to'])} "
+                    f"(from **{app['issue']}**, tier {app['tier']})"
+                )
+        if suggested["skipped"]:
+            with st.expander(f"Skipped adjustments ({len(suggested['skipped'])})"):
+                for sk in suggested["skipped"]:
+                    st.markdown(f"- {sk}")
+    else:
+        st.info("No setup changes generated.")
+
+    # ----- Ranked setup changes (All options) -----
+    st.subheader("Ranked setup changes & options")
+    st.caption(
+        "Each issue offers multiple levers (e.g. front wing vs front ARB vs diff). "
+        "Options marked **infeasible** show why they hit a confirmed limit."
+    )
+    if changes:
+        by_issue = recommendations_by_issue(changes)
+        for issue_name, ch_list in by_issue.items():
+            with st.expander(f"📥 {issue_name} ({len(ch_list)} options)", expanded=False):
+                ch_rows = []
+                for c in ch_list:
+                    status = "✅ Feasible" if c.feasible else f"❌ Blocked: {c.blocked_reason}"
+                    ch_rows.append(
+                        {
+                            "Option": c.option_label,
+                            "Parameter": c.parameter,
+                            "Direction": c.direction,
+                            "Change / Amount": c.amount_hint,
+                            "Status": status,
+                            "Validation": c.validation_metric,
+                            "Reason": c.reason,
+                        }
+                    )
+                st.dataframe(pd.DataFrame(ch_rows), width="stretch", hide_index=True)
+    else:
+        st.info("No setup changes recommended.")
+
+    # ----- Driver coach -----
+    st.subheader("Driver coach & time-loss zones")
+    for n in driver.get("notes", []):
+        st.markdown(f"- {n}")
+
+    col_b, col_t, col_s = st.columns(3)
+    with col_b:
+        st.markdown("**Brake analysis**")
+        for bn in driver.get("brake_notes", []):
+            st.markdown(f"- {bn}")
+    with col_t:
+        st.markdown("**Throttle & exit**")
+        for tn in driver.get("throttle_notes", []):
+            st.markdown(f"- {tn}")
+    with col_s:
+        st.markdown("**Scrub & balance**")
+        for sn in driver.get("scrub_notes", []):
+            st.markdown(f"- {sn}")
+
+    zones = driver.get("time_loss_zones", [])
+    if zones:
+        st.markdown("**Top time-loss distance bins vs best lap**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Distance (m)": int(z["distance_m"]),
+                        "Time loss (s)": round(z["time_loss_s"], 3),
+                        "Speed ref (kph)": round(z["speed_ref_kph"], 1),
+                        "Speed cmp (kph)": round(z["speed_cmp_kph"], 1),
+                        "Speed delta": round(z["speed_delta_kph"], 1),
+                    }
+                    for z in zones
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+    # ----- Detailed diagnostics list -----
+    with st.expander("Detailed diagnostics event log", expanded=False):
+        if events:
+            ev_rows = [
+                {
+                    "Lap": int(e.lap) if not np.isnan(e.lap) else "",
+                    "Dist (m)": round(e.distance_m, 1),
+                    "Speed (kph)": round(e.speed_kph, 1),
+                    "Phase": e.phase,
+                    "Issue": e.name,
+                    "Severity": round(e.severity, 2),
+                    "Detail": e.detail,
+                }
+                for e in events
+            ]
+            st.dataframe(pd.DataFrame(ev_rows), width="stretch", hide_index=True)
+        else:
+            st.info("No diagnostic events recorded.")
 
 
 if __name__ == "__main__":
