@@ -200,6 +200,16 @@ def load_telemetry(file) -> pd.DataFrame:
 def _to_num(s: pd.Series) -> pd.Series:
     return pd.to_numeric(s, errors="coerce")
 
+def _scalar(v, default=0.0):
+    if isinstance(v, pd.Series):
+        v = v.dropna()
+        v = default if v.empty else v.iloc[-1]
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return default
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
 
 def _assign_g_axes(df: pd.DataFrame, gx: pd.Series, gy: pd.Series) -> tuple[pd.Series, pd.Series]:
     idx = df.index
@@ -513,8 +523,8 @@ def run_diagnostics(df, us_alpha=US_ALPHA_THRESH, os_alpha=OS_ALPHA_THRESH, lock
     for _, row in d.iterrows():
         phase = row.get("phase")
         bal = row.get("alpha_balance")
-        spd = float(row.get("speed_kph") or 0)
-        gabs = float(row.get("g_lat_abs") or 0)
+        spd = _scalar(row.get("speed_kph"), 0)
+        gabs = _scalar(row.get("g_lat_abs"), 0)
         if pd.notna(bal) and phase == PHASE_MID and gabs > 0.6:
             if bal > us_alpha:
                 iid = "us_low" if spd < V_LOW else ("us_high" if spd > V_HIGH else "us_mid_speed")
@@ -527,8 +537,8 @@ def run_diagnostics(df, us_alpha=US_ALPHA_THRESH, os_alpha=OS_ALPHA_THRESH, lock
                 add("us_entry", row, min(2, bal / us_alpha), f"Turn-in push α_bal={bal:.3f}")
             elif bal < -os_alpha * 1.1:
                 add("os_entry", row, min(2, abs(bal) / os_alpha), f"Rear rotates on entry α_bal={bal:.3f}")
-        thr = float(row.get("throttle") or 0)
-        brk = float(row.get("brake") or 0)
+        thr = _scalar(row.get("throttle"), 0)
+        brk = _scalar(row.get("brake"), 0)
         if phase == PHASE_EXIT and thr > 0.4:
             kr = row.get("kappa_r")
             if pd.notna(kr) and kr > spin_slip:
@@ -543,7 +553,7 @@ def run_diagnostics(df, us_alpha=US_ALPHA_THRESH, os_alpha=OS_ALPHA_THRESH, lock
                 add("lock_front", row, min(2, abs(kf) / lock_slip), f"κ_f={kf:.3f}")
             if pd.notna(kr) and abs(kr) > lock_slip and kr < 0:
                 add("lock_rear", row, min(2, abs(kr) / lock_slip), f"κ_r={kr:.3f}")
-        ds = float(row.get("d_steer") or 0)
+        ds = _scalar(row.get("d_steer"), 0)
         if phase in (PHASE_MID, PHASE_EXIT) and gabs > 0.7 and ds > 0.04:
             add("steer_corrections", row, min(2, ds / 0.04), f"Δsteer={ds:.3f}")
         tf, tr = row.get("tyre_temp_f"), row.get("tyre_temp_r")
