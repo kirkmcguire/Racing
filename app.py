@@ -1266,14 +1266,14 @@ def main():
 
     if overview.get("lap_times"):
         st.markdown("**Completed lap times**")
-        st.dataframe(pd.DataFrame([{"Lap": int(ln), "Time": format_lap_time(lt), "Seconds": round(lt, 3)} for ln, lt in overview["lap_times"]]), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame([{"Lap": int(ln), "Time": format_lap_time(lt), "Seconds": round(lt, 3)} for ln, lt in overview["lap_times"]]), use_container_width=True, hide_index=True)
     else:
         st.warning("No completed lap times detected (need ≥55s flying laps).")
 
     rejected = getattr(extract_completed_lap_times, "last_rejected", None) or []
     if rejected:
         with st.expander(f"Ignored laps ({len(rejected)})"):
-            st.dataframe(pd.DataFrame(rejected), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(rejected), use_container_width=True, hide_index=True)
 
     st.subheader("Session grade")
     st.caption(grade["disclaimer"])
@@ -1289,11 +1289,11 @@ def main():
             "Presence %": round(s.lap_presence_pct, 1), "Per lap": round(s.events_per_lap, 2),
             "Severity": round(s.mean_severity, 2),
             "Hot spots (m)": ", ".join(f"{h:.0f}" for h in s.hot_corners_m[:3]),
-        } for s in shown]), width="stretch", hide_index=True)
+        } for s in shown]), use_container_width=True, hide_index=True)
 
     st.subheader("Current setup (from telemetry)")
     if setup.get("table"):
-        st.dataframe(pd.DataFrame(setup["table"]), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(setup["table"]), use_container_width=True, hide_index=True)
         n = setup.get("named") or {}
         a1, a2, a3, a4 = st.columns(4)
         a1.metric("Front wing", format_setup_value("Front wing", _to_limit_units("Front wing", n.get("Front wing"))))
@@ -1320,9 +1320,9 @@ def main():
     changed_rows = [r for r in suggested.get("rows") or [] if r.get("Changed")]
     if changed_rows:
         st.markdown("**Delta only**")
-        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Parameter", "Current", "Suggested", "Delta")} for r in changed_rows]), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Parameter", "Current", "Suggested", "Delta")} for r in changed_rows]), use_container_width=True, hide_index=True)
     with st.expander("Full setup card (current vs suggested)"):
-        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Parameter", "Current", "Suggested", "Delta")} for r in suggested.get("rows") or []]), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame([{k: r[k] for k in ("Parameter", "Current", "Suggested", "Delta")} for r in suggested.get("rows") or []]), use_container_width=True, hide_index=True)
 
     st.subheader("Driver coach (vs best lap)")
     for nline in driver.get("notes") or []:
@@ -1333,7 +1333,7 @@ def main():
             "Distance (m)": int(x["distance_m"]), "Proxy loss (s)": round(x["time_loss_s"], 3),
             "Best lap kph": round(x["speed_ref_kph"], 1), "Other kph": round(x["speed_cmp_kph"], 1),
             "Δ kph": round(x["speed_delta_kph"], 1),
-        } for x in z]), width="stretch", hide_index=True)
+        } for x in z]), use_container_width=True, hide_index=True)
 
     st.subheader("Recommended setup changes")
     if not changes:
@@ -1369,11 +1369,11 @@ def main():
             "Hot spots (m)": ", ".join(f"{h:.0f}" for h in s.hot_corners_m),
             "Example": s.sample_details[0] if s.sample_details else "",
         } for s in shown])
-        st.dataframe(table, width="stretch", hide_index=True)
+        st.dataframe(table, use_container_width=True, hide_index=True)
         fig = px.bar(table, x="Issue", y="Count", color="Tier", title="Issue frequency by tier",
                      category_orders={"Tier": ["S", "A", "B", "C"]})
         fig.update_layout(xaxis_tickangle=-35, height=400)
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Telemetry snapshots")
     d = df[df["valid_sample"]].copy() if "valid_sample" in df.columns else df.copy()
@@ -1392,14 +1392,14 @@ def main():
                     fig.update_layout(height=380, yaxis=dict(title="kph"),
                                       yaxis2=dict(title="Input %", overlaying="y", side="right", range=[0, 100]),
                                       legend=dict(orientation="h"), margin=dict(l=40, r=40, t=30, b=40))
-                    st.plotly_chart(fig, width="stretch")
+                    st.plotly_chart(fig, use_container_width=True)
                 with t2:
                     fig2 = go.Figure()
                     fig2.add_trace(go.Scatter(x=ld["lap_distance"], y=ld["alpha_balance"], name="α_f − α_r"))
                     fig2.add_hline(y=us_alpha, line_dash="dot", annotation_text="US")
                     fig2.add_hline(y=-os_alpha, line_dash="dot", annotation_text="OS")
                     fig2.update_layout(height=380, xaxis_title="Distance (m)", yaxis_title="Slip angle balance (rad)")
-                    st.plotly_chart(fig2, width="stretch")
+                    st.plotly_chart(fig2, use_container_width=True)
 
     with st.expander("Engineer notes / method"):
         st.markdown(
