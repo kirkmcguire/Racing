@@ -1064,133 +1064,103 @@ def _sev(summaries, *ids):
         best = max(best, v)
     return best
 
-
-def _ideal_add(target, current, parameter, clicks, reason, acc):
-    n = int(round(float(clicks)))
-    if n == 0 or parameter not in SETUP_LIMITS:
-        return
-    base = target.get(parameter)
-    if base is None:
-        base = current.get(parameter)
-    if base is None:
-        return
-    target[parameter] = _apply_clicks(parameter, float(base), n)
-    from_cur = current.get(parameter)
-    to_v = float(target[parameter])
-    if from_cur is None:
-        actual, from_v = n, float(base)
-    else:
-        from_v = float(from_cur)
-        actual = _clicks_between(parameter, from_v, to_v)
-    if actual == 0:
-        return
-    acc[parameter] = {
-        "parameter": parameter, "direction": "increase" if actual > 0 else "decrease",
-        "from": from_v, "to": to_v, "steps": abs(actual), "issue": "Best guess",
-        "issue_id": "ideal", "tier": "—", "reason": reason, "weight": 1.0,
-    }
+def _guess_steps(summary, weight=1.0) -> int:
+    """Moderate fault → 2 clicks. Severe → 6. Worse than that can go past 6."""
+    sev = float(getattr(summary, "mean_severity", 0) or 0)
+    pres = float(getattr(summary, "lap_presence_pct", 0) or 0) / 100.0
+    w = float(weight or 1.0)
+    score = (0.60 * min(max(sev, 0.0) / 2.0, 1.0) + 0.40 * min(max(pres, 0.0), 1.0)) * min(max(w, 0.3), 1.3)
+    if score < 0.22:
+        return 1
+    if score < 0.40:
+        return 2
+    if score < 0.58:
+        return 4
+    if score < 0.80:
+        return 6
+    if score < 0.95:
+        return 8
+    return 10
 
 
 def build_ideal_setup(setup, summaries, track_type="med", weather="dry"):
-    """Full target sheet. Not capped at 1–2 clicks. Allowed to look nothing like the car you ran."""
-    tt = track_type if track_type in TRACK_TYPE_BASELINES else "med"
-    wet = (weather or "dry").strip().lower().startswith("wet")
-    type_label = {"high": "high-downforce", "low": "low-downforce", "med": "medium-downforce"}[tt]
     current = {param: setup_current(setup, param) for param in SETUP_LIMITS}
-    baseline = dict(TRACK_TYPE_BASELINES[tt])
-    if wet:
-        baseline["Front wing"] = _clamp_setup_value("Front wing", baseline["Front wing"] + 6)
-        baseline["Rear wing"] = _clamp_setup_value("Rear wing", baseline["Rear wing"] + 8)
-        baseline["On-throttle differential"] = _clamp_setup_value("On-throttle differential", baseline["On-throttle differential"] - 0.08)
-        baseline["Off-throttle differential"] = _clamp_setup_value("Off-throttle differential", max(baseline["Off-throttle differential"] - 0.06, 0.20))
-        baseline["Brake bias (% front)"] = _clamp_setup_value("Brake bias (% front)", baseline["Brake bias (% front)"] - 0.01)
-    target = dict(baseline)
-    for param in SETUP_LIMITS:
-        if target.get(param) is None:
-            target[param] = current.get(param)
-    acc = {}
-    u_mid = _sev(summaries, "us_low", "us_mid_speed")
-    u_high = _sev(summaries, "us_high", "aero_us_hs")
-    u_ent = _sev(summaries, "us_entry")
-    o_ex = _sev(summaries, "os_exit", "traction_spin")
-    o_mid = _sev(summaries, "os_low")
-    o_high = _sev(summaries, "os_high")
-    f_lock = _sev(summaries, "lock_front")
-    r_lock = _sev(summaries, "lock_rear")
-    traction = _sev(summaries, "traction_spin")
-    nervous = _sev(summaries, "steer_corrections")
-    tires_hot = _sev(summaries, "tires_hot")
-    tires_cold = _sev(summaries, "tires_cold")
-    axle_imb = _sev(summaries, "tires_axle_imbalance")
-    _ideal_add(target, current, "Front wing", u_mid * 10 + u_high * 8 + u_ent * 5 - o_ex * 5 - o_high * 3,
-               "Load the nose. Front-limited traces get real wing, not a courtesy click.", acc)
-    _ideal_add(target, current, "Rear wing", o_ex * 8 + o_mid * 4 + o_high * 7 + nervous * 4 - u_mid * 5 - u_high * 6,
-               "Rear wing for stability vs drag.", acc)
-    _ideal_add(target, current, "Front ARB", -u_mid * 7 - u_high * 4 + o_mid * 3 + o_ex * 2,
-               "Softer front bar if the mid-corner is a push.", acc)
-    _ideal_add(target, current, "Rear ARB", -o_ex * 7 - o_mid * 6 - o_high * 4 - traction * 5 + u_mid * 4,
-               "Rear bar for rotation vs traction.", acc)
-    _ideal_add(target, current, "On-throttle differential", -o_ex * 14 - traction * 12 + u_mid * 5,
-               "On-throttle locking vs spin.", acc)
-    _ideal_add(target, current, "Off-throttle differential", -u_ent * 10 + o_mid * 6 + r_lock * 4,
-               "Off-throttle for entry rotation.", acc)
-    _ideal_add(target, current, "Brake bias (% front)", -u_ent * 4 - f_lock * 4 + o_ex * 1 + r_lock * 3,
-               "Bias for entry rotation and locking.", acc)
-    _ideal_add(target, current, "Front ride height", -u_mid * 3 - u_high * 3 + tires_hot * 2, "Front ride height / rake.", acc)
-    _ideal_add(target, current, "Rear ride height", u_mid * 4 - o_ex * 3, "Rear ride height / rake.", acc)
-    _ideal_add(target, current, "Front spring", -u_ent * 5 - u_mid * 3 + o_ex * 3, "Softer front spring if the car will not turn.", acc)
-    _ideal_add(target, current, "Rear spring", -traction * 7 - o_ex * 4 + u_mid * 2, "Rear spring for traction.", acc)
-    _ideal_add(target, current, "Front camber", -u_mid * 3 + tires_hot * 2, "Front camber.", acc)
-    _ideal_add(target, current, "Rear camber", -o_ex * 2 - tires_hot * 1, "Rear camber.", acc)
-    _ideal_add(target, current, "Rear toe in", nervous * 8 + o_ex * 4 - u_mid * 3, "Rear toe-in for stability.", acc)
-    _ideal_add(target, current, "Front toe out", u_mid * 4 + u_ent * 3, "A touch of front toe-out for turn-in.", acc)
-    _ideal_add(target, current, "Front tire pressure", tires_hot * 6 - tires_cold * 8 + axle_imb * 2, "Front pressure from temperature.", acc)
-    _ideal_add(target, current, "Rear tire pressure", tires_hot * 6 - tires_cold * 8 - axle_imb * 2, "Rear pressure from temperature.", acc)
-    bp = target.get("Brake pressure")
-    if f_lock > 0.45 and bp is not None and bp > 0.95:
-        _ideal_add(target, current, "Brake pressure", -2, "Take pressure out if the fronts are locking.", acc)
-    for param in SETUP_LIMITS:
-        if param in acc:
-            continue
-        cur, sug = current.get(param), target.get(param)
-        if cur is None or sug is None:
-            continue
-        clicks = _clicks_between(param, float(cur), float(sug))
-        if not clicks:
-            continue
-        acc[param] = {
-            "parameter": param, "direction": "increase" if clicks > 0 else "decrease",
-            "from": float(cur), "to": float(sug), "steps": abs(clicks),
-            "issue": "Track baseline", "issue_id": "ideal", "tier": "—",
-            "reason": f"Came with the {type_label} baseline, not a click from your current car.",
-            "weight": 1.0,
-        }
-    applied = [v for v in acc.values() if v.get("steps")]
-    applied.sort(key=lambda a: -abs(float(a["to"]) - float(a["from"])))
-    total_clicks = sum(abs(_clicks_between(a["parameter"], a["from"], a["to"])) for a in applied)
-    shake = min(1.0, total_clicks / 40.0)
+    suggested = dict(current)
+    applied_by_param = {}
+    skipped = []
+    issues = [s for s in summaries if s.issue_id in ISSUE_TO_CHANGES]
+    issues.sort(key=lambda s: (-s.criticality, s.tier))
+    param_dir = {}
+
+    for s in issues:
+        templates = sorted(ISSUE_TO_CHANGES.get(s.issue_id, []), key=lambda t: -t.get("weight", 0))
+        used_this_issue = 0
+        for t in templates:
+            if used_this_issue >= 2:
+                break
+            param, direction = t["parameter"], t["direction"]
+            if direction == "adjust" or param not in SETUP_LIMITS:
+                continue
+            if param in param_dir and param_dir[param] != direction:
+                continue
+            ok, blocked, cur, lo, hi = feasibility(param, direction, setup)
+            start = suggested.get(param)
+            if start is None:
+                start = cur
+            if not ok or start is None:
+                continue
+            n_steps = _guess_steps(s, t.get("weight", 1.0))
+            new_val = _apply_clicks(param, float(start), n_steps if direction == "increase" else -n_steps)
+            gained = _clicks_between(param, float(start), float(new_val))
+            if gained == 0:
+                continue
+            suggested[param] = new_val
+            param_dir[param] = direction
+            from_orig = current.get(param)
+            total = _clicks_between(param, float(from_orig), float(new_val)) if from_orig is not None else gained
+            if param in applied_by_param:
+                prev = applied_by_param[param]
+                prev["to"] = float(new_val)
+                prev["steps"] = abs(total)
+                prev["issue"] = f"{prev['issue']}; {s.name}"
+                prev["reason"] = prev["reason"] + f" + {t['reason']}"
+            else:
+                applied_by_param[param] = {
+                    "parameter": param, "direction": direction,
+                    "from": float(from_orig) if from_orig is not None else float(start),
+                    "to": float(new_val), "steps": abs(total),
+                    "issue": s.name, "issue_id": s.issue_id, "tier": s.tier,
+                    "reason": t["reason"], "weight": t.get("weight", 1.0),
+                }
+            used_this_issue += 1
+        if used_this_issue == 0:
+            skipped.append(f"{s.name}: no feasible numeric lever left")
+
+    applied = list(applied_by_param.values())
+    applied.sort(key=lambda a: -a["steps"])
     ranked = sorted(summaries, key=lambda s: -s.criticality)
     dominant = ranked[0] if ranked else None
     if dominant:
-        philosophy = (f"This is not a 1-click list. I started from a {type_label} baseline "
-                      f"and rebuilt around {dominant.name.lower()}. It is allowed to look nothing like the car you just ran.")
-        headline = f"Best guess: rebuild around {dominant.name.lower()}."
+        headline = f"Best guess: scale clicks from your car around {dominant.name.lower()}."
+        philosophy = (
+            "Starts from the car you just ran. Moderate faults get about 2 clicks. "
+            "Severe faults get about 6. If the trace is screaming, it can go past 6 on that lever."
+        )
     else:
-        philosophy = (f"This is not a 1-click list. I started from a {type_label} baseline "
-                      "and wrote a full target sheet from the trace. It is allowed to look nothing like the car you just ran.")
-        headline = "Best guess: a clean baseline for this track type."
-    notes = ["Wet overlay: more wing, less on-throttle lock, bias a click rearward." if wet
-             else "Dry sheet. If the circuit is actually wet, flip weather before you copy this."]
+        headline = "Best guess: nothing loud enough to move the car."
+        philosophy = "Starts from your current car. No fault was loud enough to justify a change."
+    notes = [
+        "Not a baseline rebuild. Same diagnosis as Conservative — bigger moves when the fault is louder.",
+        "Soft cap is 6 clicks per lever per fault. Super-severe can hit 8–10.",
+    ]
     if dominant:
         notes.append(f"Loudest thing in the trace: {dominant.name.lower()}.")
-    if shake > 0.4:
-        notes.append("Shake-up sheet. Put it on in practice, do three laps, then go back to Conservative clicks if you want.")
-    rows = _setup_diff_rows(current, target)
+    rows = _setup_diff_rows(current, suggested)
     return {
-        "mode": "best guess", "current": current, "suggested": target, "applied": applied,
-        "skipped": [], "rows": rows, "max_changes": sum(1 for r in rows if r.get("Changed")),
+        "mode": "best guess", "current": current, "suggested": suggested, "applied": applied,
+        "skipped": skipped, "rows": rows, "max_changes": sum(1 for r in rows if r.get("Changed")),
         "tiers_used": ["S", "A", "B", "C"], "philosophy": philosophy, "headline": headline,
-        "notes": notes, "track_type_used": tt, "weather": "wet" if wet else "dry", "shake_factor": shake,
+        "notes": notes, "track_type_used": track_type, "weather": weather, "shake_factor": 0.0,
     }
 
 
